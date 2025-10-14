@@ -1,13 +1,13 @@
 "use client"
 
 import { useAuth } from "@/lib/auth-context"
-import { GraduationCap, LogOut, User, Menu, X } from "lucide-react"
+import { GraduationCap, LogOut, User, Menu, X, UserCircle } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 
 export function Header() {
-  const { user, signInWithGoogle, logout } = useAuth()
+  const { user, signInWithGoogle, signInAnonymously, logout } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
@@ -45,7 +45,9 @@ export function Header() {
             <>
               <Link href="/profile">
                 <Button variant="ghost" size="icon" className="rounded-full">
-                  {user.photoURL ? (
+                  {user.isAnonymous ? (
+                    <UserCircle className="h-5 w-5 text-muted-foreground" />
+                  ) : user.photoURL ? (
                     <img
                       src={user.photoURL || "/placeholder.svg"}
                       alt={user.displayName || "User"}
@@ -61,12 +63,21 @@ export function Header() {
               </Button>
             </>
           ) : (
-            <Button
-              onClick={signInWithGoogle}
-              className="bg-primary text-primary-foreground hover:bg-primary-hover glow-effect"
-            >
-              Iniciar Sesión
-            </Button>
+            <>
+              <Button
+                onClick={signInWithGoogle}
+                className="bg-primary text-primary-foreground hover:bg-primary-hover glow-effect"
+              >
+                Iniciar Sesión
+              </Button>
+              <Button
+                onClick={signInAnonymously}
+                variant="outline"
+                className="border-primary text-primary hover:bg-primary/10 bg-transparent"
+              >
+                Continuar como Invitado
+              </Button>
+            </>
           )}
         </div>
 
@@ -118,12 +129,21 @@ export function Header() {
                   Cerrar Sesión
                 </Button>
               ) : (
-                <Button
-                  onClick={signInWithGoogle}
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary-hover"
-                >
-                  Iniciar Sesión
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={signInWithGoogle}
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary-hover"
+                  >
+                    Iniciar Sesión
+                  </Button>
+                  <Button
+                    onClick={signInAnonymously}
+                    variant="outline"
+                    className="w-full border-primary text-primary hover:bg-primary/10 bg-transparent"
+                  >
+                    Continuar como Invitado
+                  </Button>
+                </div>
               )}
             </div>
           </nav>

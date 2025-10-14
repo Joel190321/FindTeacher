@@ -2,7 +2,13 @@
 
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
-import { type User, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth"
+import {
+  type User,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  signInAnonymously as firebaseSignInAnonymously,
+} from "firebase/auth"
 import { doc, setDoc, getDoc } from "firebase/firestore"
 import { getFirebaseAuth, getFirebaseDb, getGoogleProvider } from "./firebase"
 
@@ -10,6 +16,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   signInWithGoogle: () => Promise<void>
+  signInAnonymously: () => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -17,6 +24,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signInWithGoogle: async () => {},
+  signInAnonymously: async () => {},
   logout: async () => {},
 })
 
@@ -45,8 +53,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email,
-            displayName: user.displayName,
+            displayName: user.displayName || (user.isAnonymous ? "Usuario Anónimo" : "Usuario"),
             photoURL: user.photoURL,
+            isAnonymous: user.isAnonymous,
             createdAt: new Date().toISOString(),
           })
         }
@@ -74,6 +83,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const signInAnonymously = async () => {
+    const auth = getFirebaseAuth()
+
+    if (!auth) {
+      throw new Error("Firebase not initialized")
+    }
+
+    try {
+      await firebaseSignInAnonymously(auth)
+    } catch (error) {
+      console.error("Error signing in anonymously:", error)
+      throw error
+    }
+  }
+
   const logout = async () => {
     const auth = getFirebaseAuth()
 
@@ -89,7 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  return <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signInAnonymously, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export const useAuth = () => useContext(AuthContext)
