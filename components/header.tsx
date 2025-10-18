@@ -64,12 +64,7 @@ export function Header() {
             </>
           ) : (
             <>
-              <Button
-                onClick={signInWithGoogle}
-                className="bg-primary text-primary-foreground hover:bg-primary-hover glow-effect"
-              >
-                Iniciar Sesión
-              </Button>
+              
               <Button
                 onClick={signInAnonymously}
                 variant="outline"
@@ -130,12 +125,7 @@ export function Header() {
                 </Button>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <Button
-                    onClick={signInWithGoogle}
-                    className="w-full bg-primary text-primary-foreground hover:bg-primary-hover"
-                  >
-                    Iniciar Sesión
-                  </Button>
+                  
                   <Button
                     onClick={signInAnonymously}
                     variant="outline"
