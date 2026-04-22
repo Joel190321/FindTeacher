@@ -9,25 +9,60 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Star, Loader2 } from "lucide-react"
-import { collection, addDoc } from "firebase/firestore"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Star, Loader2, AlertCircle } from "lucide-react"
+import { collection, addDoc, query, where, getDocs, limit } from "firebase/firestore"
 import { getFirebaseDb } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
+import { PostCard } from "@/components/post-card"
+import { useEffect } from "react"
 
-const CAREERS = [
-  "Medicina",
-  "Odontología",
-  "Enfermería",
-  "Administración de Empresas",
-  "Contaduría Pública",
-  "Mercadeo",
-  "Derecho",
-  "Arquitectura",
-  "Ingeniería Civil",
-  "Ingeniería Industrial",
-  "Ingeniería en Sistemas Computacionales",
-  "Comunicación Social",
+const FACULTIES = [
+  {
+    name: "Facultad de Arquitectura e Ingenierías",
+    careers: [
+      "Arquitectura",
+      "Ingeniería Civil",
+      "Ingeniería Eléctrica",
+      "Ingeniería Electrónica",
+      "Ingeniería Industrial",
+      "Ingeniería Mecánica",
+      "Ingeniería en Sistemas Computacionales",
+    ],
+  },
+  {
+    name: "Facultad de Ciencias de la Salud",
+    careers: [
+      "Medicina",
+      "Odontología",
+      "Enfermería",
+      "Bioanálisis",
+      "Fármaco-Bioquímica",
+      "Psicología (clínica, industrial y educativa)",
+      "Optometría",
+      "Nutrición Humana y Dietética",
+      "Veterinaria y Zootecnia",
+    ],
+  },
+  {
+    name: "Facultad de Ciencias Económicas y Sociales",
+    careers: [
+      "Administración de Empresas",
+      "Administración de Empresas Turísticas y Hoteleras",
+      "Contaduría Pública",
+      "Mercadeo",
+      "Economía",
+    ],
+  },
+  {
+    name: "Facultad de Ciencias y Humanidades",
+    careers: [
+      "Derecho",
+      "Comunicación Social",
+      "Educación (con diversas menciones: Inicial, Básica, Lenguas Modernas, Matemáticas y Física, Ciencias Naturales, Ciencias Sociales, Educación Física)",
+      "Administración de Oficinas / Ciencias Secretariales",
+    ],
+  },
 ] as const
 
 export default function CreatePost() {
@@ -45,6 +80,41 @@ export default function CreatePost() {
     review: "",
   })
 
+  const [existingPost, setExistingPost] = useState<any>(null)
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+
+  useEffect(() => {
+    const checkDuplicate = async () => {
+      if (formData.courseCode.length < 3) {
+        setExistingPost(null)
+        return
+      }
+
+      setCheckingDuplicate(true)
+      try {
+        const db = getFirebaseDb()
+        if (!db) return
+
+        const q = query(collection(db, "posts"), where("courseCode", "==", formData.courseCode.toUpperCase()), limit(1))
+        const querySnapshot = await getDocs(q)
+
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0]
+          setExistingPost({ id: doc.id, ...doc.data() })
+        } else {
+          setExistingPost(null)
+        }
+      } catch (error) {
+        console.error("Error checking duplicate:", error)
+      } finally {
+        setCheckingDuplicate(false)
+      }
+    }
+
+    const timer = setTimeout(checkDuplicate, 500)
+    return () => clearTimeout(timer)
+  }, [formData.courseCode])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -60,6 +130,11 @@ export default function CreatePost() {
 
     if (!formData.career) {
       alert("Por favor selecciona una carrera")
+      return
+    }
+
+    if (existingPost) {
+      alert("Ya existe una reseña para este código de materia")
       return
     }
 
@@ -158,10 +233,17 @@ export default function CreatePost() {
                     <SelectValue placeholder="Selecciona tu carrera" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CAREERS.map((career) => (
-                      <SelectItem key={career} value={career}>
-                        {career}
-                      </SelectItem>
+                    {FACULTIES.map((faculty) => (
+                      <SelectGroup key={faculty.name}>
+                        <SelectLabel className="px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground bg-muted/50">
+                          {faculty.name}
+                        </SelectLabel>
+                        {faculty.careers.map((career) => (
+                          <SelectItem key={career} value={career}>
+                            {career}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>
@@ -207,13 +289,29 @@ export default function CreatePost() {
               </div>
             </div>
 
+            {existingPost && (
+              <div className="mt-8 rounded-xl border border-warning/50 bg-warning/5 p-6 animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="mb-4 flex items-center gap-2 text-warning">
+                  <AlertCircle className="h-5 w-5" />
+                  <p className="font-semibold">Atención: Ya existe una reseña para este código</p>
+                </div>
+                <div className="pointer-events-none opacity-80">
+                  <PostCard post={existingPost} />
+                </div>
+                <p className="mt-4 text-sm text-muted-foreground text-center">
+                  No se permiten múltiples reseñas para el mismo código de materia. 
+                  Si crees que esto es un error, por favor contacta a soporte.
+                </p>
+              </div>
+            )}
+
             <div className="mt-8 flex gap-3">
               <Button type="button" variant="outline" onClick={() => router.back()} className="flex-1">
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                disabled={loading || formData.review.length < 50}
+                disabled={loading || formData.review.length < 50 || !!existingPost || checkingDuplicate}
                 className="flex-1 bg-primary hover:bg-primary-hover"
               >
                 {loading ? (
