@@ -1,255 +1,114 @@
 "use client"
 
 import type React from "react"
-import { getFirebaseDb } from "@/lib/firebase"
-import { useEffect, useState, Suspense, useMemo, useCallback } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore"
+import { Loader2, RotateCcw, Search, SlidersHorizontal } from "lucide-react"
 import { Header } from "@/components/header"
 import { PostCard } from "@/components/post-card"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search, Loader2, SlidersHorizontal } from "lucide-react"
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getFirebaseDb } from "@/lib/firebase"
+import { CAREERS, normalizeText, type ReviewPost } from "@/lib/reviews"
 
-const CAREERS = [
-  "Medicina",
-  "Odontología",
-  "Enfermería",
-  "Administración de Empresas",
-  "Contaduría Pública",
-  "Mercadeo",
-  "Derecho",
-  "Arquitectura",
-  "Ingeniería Civil",
-  "Ingeniería Industrial",
-  "Ingeniería en Sistemas Computacionales",
-  "Comunicación Social",
-] as const
-
-interface Post {
-  id: string
-  courseCode: string
-  courseName: string
-  professorName: string
-  career?: string
-  rating: number
-  review: string
-  authorName: string
-  authorPhoto: string
-  createdAt: string
-  likes: number
-  commentsCount: number
-}
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
+function useDebounce<T>(value: T, delay: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
+  }, [delay, value])
   return debouncedValue
 }
 
 function ExploreContent() {
   const searchParams = useSearchParams()
-  const initialQuery = searchParams.get("q") || ""
-
-  const [posts, setPosts] = useState<Post[]>([])
+  const [posts, setPosts] = useState<ReviewPost[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState(initialQuery)
-  const [filterRating, setFilterRating] = useState<number | null>(null)
-  const [filterCareer, setFilterCareer] = useState<string>("all")
-
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "")
+  const [minimumRating, setMinimumRating] = useState("all")
+  const [maximumDifficulty, setMaximumDifficulty] = useState("all")
+  const [career, setCareer] = useState("all")
+  const [sortBy, setSortBy] = useState("recent")
+  const debouncedSearch = useDebounce(searchQuery, 250)
 
   useEffect(() => {
     const fetchPosts = async () => {
       try {
         const db = getFirebaseDb()
-        if (!db) {
-          console.error("Firestore not initialized")
-          setLoading(false)
-          return
-        }
-
-        const postsRef = collection(db, "posts")
-        const q = query(postsRef, orderBy("createdAt", "desc"), limit(30))
-        const querySnapshot = await getDocs(q)
-
-        const postsData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Post[]
-
-        setPosts(postsData)
+        if (!db) return
+        const snapshot = await getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(100)))
+        setPosts(snapshot.docs.map((post) => ({ id: post.id, ...post.data() }) as ReviewPost))
       } catch (error) {
-        console.error("Error fetching posts:", error)
+        console.error("Error fetching reviews:", error)
       } finally {
         setLoading(false)
       }
     }
-
     fetchPosts()
   }, [])
 
   const filteredPosts = useMemo(() => {
-    let filtered = posts
+    const term = normalizeText(debouncedSearch)
+    const result = posts.filter((post) => {
+      const searchable = normalizeText(`${post.courseCode} ${post.courseName} ${post.professorName} ${post.career || ""} ${post.academicTerm || ""}`)
+      return (!term || searchable.includes(term))
+        && (career === "all" || post.career === career)
+        && (minimumRating === "all" || post.rating >= Number(minimumRating))
+        && (maximumDifficulty === "all" || !post.difficulty || post.difficulty <= Number(maximumDifficulty))
+    })
 
-    if (debouncedSearchQuery.trim()) {
-      const query = debouncedSearchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (post) =>
-          post.courseCode.toLowerCase().includes(query) ||
-          post.courseName.toLowerCase().includes(query) ||
-          post.professorName.toLowerCase().includes(query),
-      )
-    }
+    return [...result].sort((a, b) => {
+      if (sortBy === "rating") return b.rating - a.rating
+      if (sortBy === "useful") return (b.likes || 0) - (a.likes || 0)
+      if (sortBy === "difficulty") return (a.difficulty || 0) - (b.difficulty || 0)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  }, [career, debouncedSearch, maximumDifficulty, minimumRating, posts, sortBy])
 
-    if (filterRating !== null) {
-      filtered = filtered.filter((post) => post.rating === filterRating)
-    }
-
-    if (filterCareer !== "all") {
-      filtered = filtered.filter((post) => post.career === filterCareer)
-    }
-
-    return filtered
-  }, [debouncedSearchQuery, filterRating, filterCareer, posts])
-
-  const handleSearch = useCallback((e: React.FormEvent) => {
-    e.preventDefault()
+  const resetFilters = useCallback(() => {
+    setSearchQuery("")
+    setMinimumRating("all")
+    setMaximumDifficulty("all")
+    setCareer("all")
+    setSortBy("recent")
   }, [])
 
-  const handleRatingFilter = useCallback((rating: number | null) => {
-    setFilterRating(rating)
-  }, [])
+  const hasFilters = searchQuery || minimumRating !== "all" || maximumDifficulty !== "all" || career !== "all" || sortBy !== "recent"
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-12">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-balance md:text-4xl">Explorar Reseñas</h1>
-          <p className="mt-2 text-muted-foreground">Busca por código de materia, nombre o profesor</p>
-        </div>
+        <div className="mb-8"><h1 className="text-3xl font-bold md:text-4xl">Explorar reseñas</h1><p className="mt-2 text-muted-foreground">Encuentra experiencias por profesor, materia, carrera o período.</p></div>
 
-        <div className="mb-8 space-y-6">
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Buscar por código, materia o profesor..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-11"
-              />
-            </div>
-          </form>
-
-          <div className="rounded-xl border-2 border-border bg-card/50 p-5 shadow-sm backdrop-blur-sm">
-            <div className="mb-4 flex items-center gap-3">
-              <SlidersHorizontal className="h-5 w-5 text-primary" />
-              <span className="text-base font-semibold">Filtros</span>
-            </div>
-
-            <div className="grid gap-5 md:grid-cols-2">
-              <div className="space-y-2.5">
-                <Label className="text-sm font-medium text-foreground">Carrera</Label>
-                <Select value={filterCareer} onValueChange={setFilterCareer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas las carreras" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las carreras</SelectItem>
-                    {CAREERS.map((career) => (
-                      <SelectItem key={career} value={career}>
-                        {career}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2.5">
-                <Label className="text-sm font-medium text-foreground">Calificación</Label>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    variant={filterRating === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handleRatingFilter(null)}
-                    className="font-medium"
-                  >
-                    Todas
-                  </Button>
-                  {[5, 4, 3, 2, 1].map((rating) => (
-                    <Button
-                      key={rating}
-                      variant={filterRating === rating ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleRatingFilter(rating)}
-                      className="font-medium"
-                    >
-                      {rating} ⭐
-                    </Button>
-                  ))}
-                </div>
-              </div>
+        <div className="mb-8 space-y-5">
+          <div className="relative"><Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" /><Input placeholder="Profesor, materia, código, carrera o período..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="h-11 pl-10" /></div>
+          <div className="rounded-xl border-2 border-border bg-card/50 p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-primary" /><span className="font-semibold">Filtros avanzados</span></div>{hasFilters && <Button variant="ghost" size="sm" onClick={resetFilters}><RotateCcw className="mr-2 h-4 w-4" />Limpiar</Button>}</div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              <FilterSelect label="Carrera" value={career} onChange={setCareer} options={[{ value: "all", label: "Todas las carreras" }, ...CAREERS.map((item) => ({ value: item, label: item }))]} />
+              <FilterSelect label="Calificación mínima" value={minimumRating} onChange={setMinimumRating} options={[{ value: "all", label: "Cualquier calificación" }, ...[5, 4, 3, 2].map((value) => ({ value: String(value), label: `${value}+ estrellas` }))]} />
+              <FilterSelect label="Dificultad máxima" value={maximumDifficulty} onChange={setMaximumDifficulty} options={[{ value: "all", label: "Cualquier dificultad" }, ...[1, 2, 3, 4, 5].map((value) => ({ value: String(value), label: `Hasta ${value}/5` }))]} />
+              <FilterSelect label="Ordenar por" value={sortBy} onChange={setSortBy} options={[{ value: "recent", label: "Más recientes" }, { value: "rating", label: "Mejor valoración" }, { value: "useful", label: "Más útiles" }, { value: "difficulty", label: "Menor dificultad" }]} />
             </div>
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : filteredPosts.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">
-              {searchQuery || filterCareer !== "all" || filterRating !== null
-                ? "No se encontraron resultados para tu búsqueda"
-                : "No hay publicaciones aún"}
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="mb-6 text-sm text-muted-foreground">
-              {filteredPosts.length} {filteredPosts.length === 1 ? "resultado" : "resultados"}
-            </p>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {filteredPosts.map((post) => (
-                <PostCard key={post.id} post={post} />
-              ))}
-            </div>
-          </>
-        )}
+        {loading ? <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> : filteredPosts.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border py-14 text-center"><p className="text-muted-foreground">No encontramos reseñas con esos criterios.</p>{hasFilters && <Button variant="outline" onClick={resetFilters} className="mt-4">Limpiar filtros</Button>}</div>
+        ) : <><p className="mb-6 text-sm text-muted-foreground">{filteredPosts.length} {filteredPosts.length === 1 ? "resultado" : "resultados"}</p><div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{filteredPosts.map((post) => <PostCard key={post.id} post={post} />)}</div></>}
       </main>
     </div>
   )
 }
 
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: { value: string; label: string }[] }) {
+  return <div className="space-y-2"><Label>{label}</Label><Select value={value} onValueChange={onChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
+}
+
 export default function ExplorePage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen">
-          <Header />
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        </div>
-      }
-    >
-      <ExploreContent />
-    </Suspense>
-  )
+  return <Suspense fallback={<div className="min-h-screen"><Header /><div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div></div>}><ExploreContent /></Suspense>
 }

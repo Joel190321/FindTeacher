@@ -1,91 +1,60 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { doc, getDoc, setDoc } from "firebase/firestore"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import { getFirebaseDb } from "@/lib/firebase"
+import {
+  averageRatings,
+  buildReviewId,
+  FACULTIES,
+  RATING_CATEGORIES,
+  toProfessorSlug,
+  type CategoryRatings,
+  type ReviewPost,
+} from "@/lib/reviews"
 import { Header } from "@/components/header"
+import { PostCard } from "@/components/post-card"
+import { RatingInput } from "@/components/rating-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Star, Loader2, AlertCircle } from "lucide-react"
-import { collection, addDoc, query, where, getDocs, limit } from "firebase/firestore"
-import { getFirebaseDb } from "@/lib/firebase"
-import { useRouter } from "next/navigation"
-import { PostCard } from "@/components/post-card"
-import { useEffect } from "react"
 
-const FACULTIES = [
-  {
-    name: "Facultad de Arquitectura e Ingenierías",
-    careers: [
-      "Arquitectura",
-      "Ingeniería Civil",
-      "Ingeniería Eléctrica",
-      "Ingeniería Electrónica",
-      "Ingeniería Industrial",
-      "Ingeniería Mecánica",
-      "Ingeniería en Sistemas Computacionales",
-    ],
-  },
-  {
-    name: "Facultad de Ciencias de la Salud",
-    careers: [
-      "Medicina",
-      "Odontología",
-      "Enfermería",
-      "Bioanálisis",
-      "Fármaco-Bioquímica",
-      "Psicología (clínica, industrial y educativa)",
-      "Optometría",
-      "Nutrición Humana y Dietética",
-      "Veterinaria y Zootecnia",
-    ],
-  },
-  {
-    name: "Facultad de Ciencias Económicas y Sociales",
-    careers: [
-      "Administración de Empresas",
-      "Administración de Empresas Turísticas y Hoteleras",
-      "Contaduría Pública",
-      "Mercadeo",
-      "Economía",
-    ],
-  },
-  {
-    name: "Facultad de Ciencias y Humanidades",
-    careers: [
-      "Derecho",
-      "Comunicación Social",
-      "Educación (con diversas menciones: Inicial, Básica, Lenguas Modernas, Matemáticas y Física, Ciencias Naturales, Ciencias Sociales, Educación Física)",
-      "Administración de Oficinas / Ciencias Secretariales",
-    ],
-  },
-] as const
+const EMPTY_RATINGS: CategoryRatings = { clarity: 0, methodology: 0, fairness: 0, punctuality: 0 }
+
+function getCurrentTerm() {
+  const date = new Date()
+  return `${date.getFullYear()}-${date.getMonth() < 6 ? "1" : "2"}`
+}
 
 export default function CreatePost() {
   const { user } = useAuth()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [rating, setRating] = useState(0)
-  const [hoveredRating, setHoveredRating] = useState(0)
-
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+  const [existingPost, setExistingPost] = useState<ReviewPost | null>(null)
+  const [ratings, setRatings] = useState<CategoryRatings>(EMPTY_RATINGS)
+  const [difficulty, setDifficulty] = useState(0)
   const [formData, setFormData] = useState({
     courseCode: "",
     courseName: "",
     professorName: "",
     career: "",
+    academicTerm: getCurrentTerm(),
     review: "",
   })
 
-  const [existingPost, setExistingPost] = useState<any>(null)
-  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+  const rating = useMemo(() => averageRatings(ratings), [ratings])
+  const ratingsComplete = Object.values(ratings).every((value) => value > 0) && difficulty > 0
 
   useEffect(() => {
     const checkDuplicate = async () => {
-      if (formData.courseCode.length < 3) {
+      if (!user || formData.courseCode.trim().length < 3 || formData.professorName.trim().length < 3) {
         setExistingPost(null)
         return
       }
@@ -94,61 +63,47 @@ export default function CreatePost() {
       try {
         const db = getFirebaseDb()
         if (!db) return
-
-        const q = query(collection(db, "posts"), where("courseCode", "==", formData.courseCode.toUpperCase()), limit(1))
-        const querySnapshot = await getDocs(q)
-
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0]
-          setExistingPost({ id: doc.id, ...doc.data() })
-        } else {
-          setExistingPost(null)
-        }
+        const reviewId = buildReviewId(user.uid, formData.professorName, formData.courseCode, formData.academicTerm)
+        const reviewSnapshot = await getDoc(doc(db, "posts", reviewId))
+        setExistingPost(reviewSnapshot.exists() ? ({ id: reviewSnapshot.id, ...reviewSnapshot.data() } as ReviewPost) : null)
       } catch (error) {
-        console.error("Error checking duplicate:", error)
+        console.error("Error checking duplicate review:", error)
       } finally {
         setCheckingDuplicate(false)
       }
     }
 
-    const timer = setTimeout(checkDuplicate, 500)
+    const timer = setTimeout(checkDuplicate, 400)
     return () => clearTimeout(timer)
-  }, [formData.courseCode])
+  }, [formData.academicTerm, formData.courseCode, formData.professorName, user])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!user) {
-      alert("Debes iniciar sesión para publicar")
-      return
-    }
-
-    if (rating === 0) {
-      alert("Por favor selecciona una calificación")
-      return
-    }
-
-    if (!formData.career) {
-      alert("Por favor selecciona una carrera")
-      return
-    }
-
-    if (existingPost) {
-      alert("Ya existe una reseña para este código de materia")
-      return
-    }
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!user) return alert("Debes iniciar sesión para publicar")
+    if (!ratingsComplete) return alert("Completa todas las calificaciones")
+    if (!formData.career) return alert("Selecciona una carrera")
+    if (existingPost) return alert("Ya publicaste una reseña para este profesor, materia y período")
 
     setLoading(true)
-
     try {
       const db = getFirebaseDb()
-      if (!db) {
-        throw new Error("Firestore not initialized")
-      }
+      if (!db) throw new Error("Firestore not initialized")
 
-      await addDoc(collection(db, "posts"), {
+      const professorName = formData.professorName.trim()
+      const courseCode = formData.courseCode.trim().toUpperCase()
+      const reviewId = buildReviewId(user.uid, professorName, courseCode, formData.academicTerm)
+
+      await setDoc(doc(db, "posts", reviewId), {
         ...formData,
+        courseCode,
+        courseName: formData.courseName.trim(),
+        professorName,
+        professorSlug: toProfessorSlug(professorName),
+        review: formData.review.trim(),
         rating,
+        ratings,
+        difficulty,
+        reviewKey: reviewId,
         authorId: user.uid,
         authorName: user.displayName || "Usuario Anónimo",
         authorPhoto: user.photoURL || "",
@@ -159,10 +114,10 @@ export default function CreatePost() {
         savedBy: [],
       })
 
-      router.push("/")
+      router.push(`/professor/${toProfessorSlug(professorName)}`)
     } catch (error) {
-      console.error("Error creating post:", error)
-      alert("Error al crear la publicación")
+      console.error("Error creating review:", error)
+      alert("No se pudo publicar la reseña. Inténtalo nuevamente.")
     } finally {
       setLoading(false)
     }
@@ -183,145 +138,83 @@ export default function CreatePost() {
     <div className="min-h-screen bg-surface">
       <Header />
       <main className="container mx-auto px-4 py-12">
-        <div className="mx-auto max-w-2xl">
+        <div className="mx-auto max-w-3xl">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-balance md:text-4xl">Comparte tu experiencia</h1>
-            <p className="mt-2 text-muted-foreground">Ayuda a otros estudiantes a tomar mejores decisiones</p>
+            <p className="mt-2 text-muted-foreground">Tu opinión se combinará con la de otros estudiantes.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-background p-6 md:p-8">
             <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="courseCode">Código de Materia *</Label>
-                  <Input
-                    id="courseCode"
-                    placeholder="Ej: MAT101"
-                    value={formData.courseCode}
-                    onChange={(e) => setFormData({ ...formData, courseCode: e.target.value.toUpperCase() })}
-                    required
-                  />
+                  <Label htmlFor="courseCode">Código de materia *</Label>
+                  <Input id="courseCode" placeholder="Ej: MAT101" value={formData.courseCode} onChange={(event) => setFormData({ ...formData, courseCode: event.target.value.toUpperCase() })} maxLength={20} required />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="courseName">Nombre de la Materia *</Label>
-                  <Input
-                    id="courseName"
-                    placeholder="Ej: Cálculo I"
-                    value={formData.courseName}
-                    onChange={(e) => setFormData({ ...formData, courseName: e.target.value })}
-                    required
-                  />
+                  <Label htmlFor="courseName">Nombre de la materia *</Label>
+                  <Input id="courseName" placeholder="Ej: Cálculo I" value={formData.courseName} onChange={(event) => setFormData({ ...formData, courseName: event.target.value })} maxLength={120} required />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="professorName">Nombre del Profesor *</Label>
-                <Input
-                  id="professorName"
-                  placeholder="Ej: Dr. Juan Pérez"
-                  value={formData.professorName}
-                  onChange={(e) => setFormData({ ...formData, professorName: e.target.value })}
-                  required
-                />
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="professorName">Nombre del profesor *</Label>
+                  <Input id="professorName" placeholder="Ej: Juan Pérez" value={formData.professorName} onChange={(event) => setFormData({ ...formData, professorName: event.target.value })} maxLength={100} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="academicTerm">Período académico *</Label>
+                  <Input id="academicTerm" placeholder="Ej: 2026-1" value={formData.academicTerm} onChange={(event) => setFormData({ ...formData, academicTerm: event.target.value })} maxLength={20} required />
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="career">Carrera *</Label>
-                <Select value={formData.career} onValueChange={(value) => setFormData({ ...formData, career: value })}>
-                  <SelectTrigger id="career">
-                    <SelectValue placeholder="Selecciona tu carrera" />
-                  </SelectTrigger>
+                <Select value={formData.career} onValueChange={(career) => setFormData({ ...formData, career })}>
+                  <SelectTrigger id="career"><SelectValue placeholder="Selecciona tu carrera" /></SelectTrigger>
                   <SelectContent>
                     {FACULTIES.map((faculty) => (
                       <SelectGroup key={faculty.name}>
-                        <SelectLabel className="px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground bg-muted/50">
-                          {faculty.name}
-                        </SelectLabel>
-                        {faculty.careers.map((career) => (
-                          <SelectItem key={career} value={career}>
-                            {career}
-                          </SelectItem>
-                        ))}
+                        <SelectLabel>{faculty.name}</SelectLabel>
+                        {faculty.careers.map((career) => <SelectItem key={career} value={career}>{career}</SelectItem>)}
                       </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>Calificación *</Label>
-                <div className="flex items-center gap-2">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setRating(i + 1)}
-                      onMouseEnter={() => setHoveredRating(i + 1)}
-                      onMouseLeave={() => setHoveredRating(0)}
-                      className="transition-transform hover:scale-110"
-                    >
-                      <Star
-                        className={`h-8 w-8 ${
-                          i < (hoveredRating || rating) ? "fill-warning text-warning" : "text-muted"
-                        }`}
-                      />
-                    </button>
-                  ))}
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    {rating > 0 ? `${rating} de 5 estrellas` : "Selecciona una calificación"}
-                  </span>
+              <div className="space-y-3">
+                <div>
+                  <Label>Calificación detallada *</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Promedio general: {rating || "—"} de 5</p>
                 </div>
+                {RATING_CATEGORIES.map((category) => (
+                  <RatingInput key={category.key} label={category.label} description={category.description} value={ratings[category.key]} onChange={(value) => setRatings((current) => ({ ...current, [category.key]: value }))} />
+                ))}
+                <RatingInput label="Nivel de dificultad" description="1 es muy fácil y 5 es muy difícil; no afecta el promedio general" value={difficulty} onChange={setDifficulty} />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="review">Tu Reseña *</Label>
-                <Textarea
-                  id="review"
-                  placeholder="Comparte tu experiencia con este profesor y materia. ¿Cómo fue su metodología? ¿Qué tan exigente es? ¿Lo recomendarías?"
-                  value={formData.review}
-                  onChange={(e) => setFormData({ ...formData, review: e.target.value })}
-                  rows={6}
-                  required
-                  className="resize-none"
-                />
-                <p className="text-xs text-muted-foreground">Mínimo 50 caracteres</p>
+                <Label htmlFor="review">Tu reseña *</Label>
+                <Textarea id="review" placeholder="Describe la metodología, las evaluaciones y qué debería saber otro estudiante." value={formData.review} onChange={(event) => setFormData({ ...formData, review: event.target.value })} rows={6} minLength={50} maxLength={2000} required className="resize-none" />
+                <p className="text-xs text-muted-foreground">{formData.review.length}/2000 · mínimo 50 caracteres</p>
               </div>
             </div>
 
             {existingPost && (
-              <div className="mt-8 rounded-xl border border-warning/50 bg-warning/5 p-6 animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="mt-8 rounded-xl border border-warning/50 bg-warning/5 p-6">
                 <div className="mb-4 flex items-center gap-2 text-warning">
                   <AlertCircle className="h-5 w-5" />
-                  <p className="font-semibold">Atención: Ya existe una reseña para este código</p>
+                  <p className="font-semibold">Ya reseñaste esta combinación durante {formData.academicTerm}</p>
                 </div>
-                <div className="pointer-events-none opacity-80">
-                  <PostCard post={existingPost} />
-                </div>
-                <p className="mt-4 text-sm text-muted-foreground text-center">
-                  No se permiten múltiples reseñas para el mismo código de materia. 
-                  Si crees que esto es un error, por favor contacta a soporte.
-                </p>
+                <PostCard post={existingPost} />
               </div>
             )}
 
             <div className="mt-8 flex gap-3">
-              <Button type="button" variant="outline" onClick={() => router.back()} className="flex-1">
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={loading || formData.review.length < 50 || !!existingPost || checkingDuplicate}
-                className="flex-1 bg-primary hover:bg-primary-hover"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Publicando...
-                  </>
-                ) : (
-                  "Publicar Reseña"
-                )}
+              <Button type="button" variant="outline" onClick={() => router.back()} className="flex-1">Cancelar</Button>
+              <Button type="submit" disabled={loading || checkingDuplicate || !!existingPost || formData.review.trim().length < 50 || !ratingsComplete} className="flex-1 bg-primary hover:bg-primary-hover">
+                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Publicando...</> : "Publicar reseña"}
               </Button>
             </div>
           </form>

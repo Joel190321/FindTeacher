@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useMemo } from "react"
+import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -11,29 +12,14 @@ import { useAuth } from "@/lib/auth-context"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { InstagramComments } from "@/components/instagram-comments"
-
-interface Post {
-  id: string
-  courseCode: string
-  courseName: string
-  professorName: string
-  rating: number
-  review: string
-  authorId: string
-  authorName: string
-  authorPhoto: string
-  createdAt: string
-  likes: number
-  likedBy: string[]
-  commentsCount: number
-  savedBy?: string[]
-}
+import { ReportReview } from "@/components/report-review"
+import { getRatingValue, RATING_CATEGORIES, toProfessorSlug, type ReviewPost } from "@/lib/reviews"
 
 export default function PostDetail() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAuth()
-  const [post, setPost] = useState<Post | null>(null)
+  const [post, setPost] = useState<ReviewPost | null>(null)
   const [loading, setLoading] = useState(true)
   const [liking, setLiking] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -56,7 +42,7 @@ export default function PostDetail() {
       postRef,
       (postSnap) => {
         if (postSnap.exists()) {
-          setPost({ id: postSnap.id, ...postSnap.data() } as Post)
+          setPost({ id: postSnap.id, ...postSnap.data() } as ReviewPost)
         } else {
           setPost(null)
         }
@@ -218,7 +204,23 @@ export default function PostDetail() {
                   </div>
                 </div>
                 <h1 className="mt-4 font-display text-2xl font-bold text-balance md:text-3xl">{post.courseName}</h1>
-                <p className="mt-2 text-lg text-muted-foreground">Profesor: {post.professorName}</p>
+                <Link href={`/professor/${post.professorSlug || toProfessorSlug(post.professorName)}`} className="mt-2 inline-block text-lg text-muted-foreground hover:text-primary hover:underline">
+                  Profesor: {post.professorName}
+                </Link>
+                {post.academicTerm && <p className="mt-1 text-sm text-muted-foreground">Período {post.academicTerm}</p>}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 border-t border-border pt-6 sm:grid-cols-2 lg:grid-cols-5">
+              {RATING_CATEGORIES.map((category) => (
+                <div key={category.key} className="rounded-lg bg-card p-3">
+                  <p className="text-xs text-muted-foreground">{category.label}</p>
+                  <p className="mt-1 font-semibold">{getRatingValue(post, category.key)}/5</p>
+                </div>
+              ))}
+              <div className="rounded-lg bg-card p-3">
+                <p className="text-xs text-muted-foreground">Dificultad</p>
+                <p className="mt-1 font-semibold">{post.difficulty || "—"}/5</p>
               </div>
             </div>
 
@@ -241,7 +243,7 @@ export default function PostDetail() {
             </div>
 
             {/* Actions */}
-            <div className="mt-6 flex items-center gap-4 border-t border-border pt-6">
+            <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-6">
               <Button
                 variant={isLiked ? "default" : "outline"}
                 size="sm"
@@ -278,12 +280,15 @@ export default function PostDetail() {
                   {isSaved ? "Guardado" : "Guardar"}
                 </Button>
               )}
+              <div className="ml-auto">
+                <ReportReview postId={postId} postAuthorId={post.authorId} />
+              </div>
             </div>
           </article>
 
           {/* Comments Section */}
           {showComments && (
-            <InstagramComments postId={postId} postAuthorId={post.authorId} onClose={() => setShowComments(false)} />
+            <InstagramComments postId={postId} postAuthorId={post.authorId || ""} onClose={() => setShowComments(false)} />
           )}
         </div>
       </main>
