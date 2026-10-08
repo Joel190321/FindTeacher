@@ -14,6 +14,7 @@ import { es } from "date-fns/locale"
 import { InstagramComments } from "@/components/instagram-comments"
 import { ReportReview } from "@/components/report-review"
 import { getRatingValue, RATING_CATEGORIES, toProfessorSlug, type ReviewPost } from "@/lib/reviews"
+import { createNotification } from "@/lib/notifications"
 
 export default function PostDetail() {
   const params = useParams()
@@ -79,6 +80,15 @@ export default function PostDetail() {
         await updateDoc(postRef, {
           likes: post.likes + 1,
           likedBy: arrayUnion(user.uid),
+        })
+        await createNotification(db, {
+          recipientId: post.authorId || "",
+          actorId: user.uid,
+          actorName: user.displayName || "Usuario",
+          type: "like",
+          title: "Tu reseña fue útil",
+          message: `${user.displayName || "Un estudiante"} marcó tu reseña como útil.`,
+          href: `/post/${postId}`,
         })
       }
     } catch (error) {

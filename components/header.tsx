@@ -1,10 +1,11 @@
 "use client"
 
 import { useAuth } from "@/lib/auth-context"
-import { GraduationCap, LogOut, User, Menu, X, UserCircle } from "lucide-react"
+import { GraduationCap, Heart, LogOut, User, Menu, X, UserCircle } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { NotificationBell } from "@/components/notification-bell"
 
 export function Header() {
   const { user, signInWithGoogle, signInAnonymously, logout } = useAuth()
@@ -29,6 +30,12 @@ export function Header() {
           >
             Explorar
           </Link>
+          <Link href="/compare" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            Comparar
+          </Link>
+          <Link href="/community" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            Comunidad
+          </Link>
           {user && (
             <Link
               href="/create"
@@ -43,6 +50,12 @@ export function Header() {
         <div className="hidden md:flex items-center gap-3">
           {user ? (
             <>
+              <NotificationBell />
+              <Link href="/favorites">
+                <Button variant="ghost" size="icon" className="rounded-full" aria-label="Profesores favoritos">
+                  <Heart className="h-5 w-5" />
+                </Button>
+              </Link>
               <Link href="/profile">
                 <Button variant="ghost" size="icon" className="rounded-full">
                   {user.isAnonymous ? (
@@ -100,6 +113,12 @@ export function Header() {
             >
               Explorar
             </Link>
+            <Link href="/compare" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors" onClick={() => setMobileMenuOpen(false)}>
+              Comparar profesores
+            </Link>
+            <Link href="/community" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors" onClick={() => setMobileMenuOpen(false)}>
+              Comunidad
+            </Link>
             {user && (
               <>
                 <Link
@@ -115,6 +134,12 @@ export function Header() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Mi Perfil
+                </Link>
+                <Link href="/favorites" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                  Profesores favoritos
+                </Link>
+                <Link href="/notifications" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors" onClick={() => setMobileMenuOpen(false)}>
+                  Notificaciones
                 </Link>
               </>
             )}

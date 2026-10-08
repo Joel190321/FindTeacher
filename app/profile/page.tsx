@@ -6,7 +6,7 @@ import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PostCard } from "@/components/post-card"
-import { Loader2, User, FileText, MessageCircle, ThumbsUp, Bookmark } from "lucide-react"
+import { Award, Loader2, User, FileText, MessageCircle, ThumbsUp, Bookmark } from "lucide-react"
 import { collection, query, where, getDocs } from "firebase/firestore"
 import { getFirebaseDb } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
@@ -37,6 +37,7 @@ interface UserStats {
   postsCount: number
   commentsCount: number
   totalLikes: number
+  reputationPoints: number
 }
 
 export default function ProfilePage() {
@@ -112,6 +113,7 @@ export default function ProfilePage() {
       postsCount: userPosts.length,
       commentsCount: userComments.length,
       totalLikes,
+      reputationPoints: userPosts.length * 10 + totalLikes * 3 + userComments.length * 2,
     }
   }, [userPosts, userComments])
 
@@ -155,7 +157,7 @@ export default function ProfilePage() {
               <h1 className="font-display text-2xl font-bold md:text-3xl">{user.displayName || "Usuario"}</h1>
               <p className="mt-1 text-muted-foreground">{user.email}</p>
 
-              <div className="mt-6 grid grid-cols-3 gap-4 md:gap-8">
+              <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-8">
                 <div className="text-center md:text-left">
                   <div className="flex items-center justify-center gap-2 md:justify-start">
                     <FileText className="h-5 w-5 text-primary" />
@@ -178,6 +180,14 @@ export default function ProfilePage() {
                     <p className="text-2xl font-bold">{stats.totalLikes}</p>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">Me gusta</p>
+                </div>
+
+                <div className="text-center md:text-left">
+                  <div className="flex items-center justify-center gap-2 md:justify-start">
+                    <Award className="h-5 w-5 text-primary" />
+                    <p className="text-2xl font-bold">{stats.reputationPoints}</p>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">Reputación</p>
                 </div>
               </div>
             </div>

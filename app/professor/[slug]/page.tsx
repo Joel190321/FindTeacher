@@ -7,6 +7,8 @@ import { collection, getDocs, limit, orderBy, query, where } from "firebase/fire
 import { BookOpen, GraduationCap, Loader2, Star, Users } from "lucide-react"
 import { Header } from "@/components/header"
 import { PostCard } from "@/components/post-card"
+import { FavoriteProfessorButton } from "@/components/favorite-professor-button"
+import { ProfessorQuestions } from "@/components/professor-questions"
 import { Button } from "@/components/ui/button"
 import { getFirebaseDb } from "@/lib/firebase"
 import { getRatingValue, RATING_CATEGORIES, toProfessorSlug, type ReviewPost } from "@/lib/reviews"
@@ -68,7 +70,7 @@ export default function ProfessorProfilePage() {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10"><GraduationCap className="h-8 w-8 text-primary" /></div>
               <div><p className="text-sm text-primary">Perfil del profesor</p><h1 className="font-display text-3xl font-bold">{professorName}</h1></div>
             </div>
-            <Button asChild><Link href="/create">Escribir una reseña</Link></Button>
+            <div className="flex flex-wrap gap-3"><FavoriteProfessorButton slug={slug} /><Button asChild><Link href="/create">Escribir una reseña</Link></Button></div>
           </div>
 
           {reviews.length > 0 ? (
@@ -92,6 +94,7 @@ export default function ProfessorProfilePage() {
         {reviews.length > 0 && (
           <section className="mt-10"><h2 className="mb-6 text-2xl font-bold">Experiencias de estudiantes</h2><div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">{reviews.map((review) => <PostCard key={review.id} post={review} />)}</div></section>
         )}
+        <ProfessorQuestions professorSlug={slug} professorName={professorName} />
       </main>
     </div>
   )

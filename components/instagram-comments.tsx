@@ -20,6 +20,7 @@ import {
 } from "firebase/firestore"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
+import { createNotification } from "@/lib/notifications"
 
 interface Comment {
   id: string
@@ -100,7 +101,7 @@ const CommentItem = memo(
                   <span className="text-xs text-muted-foreground">{formatTime(comment.createdAt)}</span>
                   {isAuthor && (
                     <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                      by author
+                      autor
                     </span>
                   )}
                 </div>
@@ -111,15 +112,15 @@ const CommentItem = memo(
                     onClick={() => onReply(comment.id)}
                     className="text-xs font-semibold text-muted-foreground hover:text-foreground"
                   >
-                    Reply
+                    Responder
                   </button>
                   {comment.replies && comment.replies.length > 0 && (
                     <button
                       onClick={() => onToggleReplies(comment.id)}
                       className="text-xs font-semibold text-muted-foreground hover:text-foreground"
                     >
-                      {showReplies ? "Hide" : `View ${comment.replies.length}`}{" "}
-                      {comment.replies.length === 1 ? "reply" : "replies"}
+                      {showReplies ? "Ocultar" : `Ver ${comment.replies.length}`}{" "}
+                      {comment.replies.length === 1 ? "respuesta" : "respuestas"}
                     </button>
                   )}
                 </div>
@@ -147,15 +148,15 @@ const CommentItem = memo(
                   type="text"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder={`Reply to ${comment.authorName}...`}
+                  placeholder={`Responder a ${comment.authorName}...`}
                   className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   autoFocus
                 />
                 <Button size="sm" onClick={() => handleSubmitReply(comment.id)} disabled={!replyText.trim()}>
-                  Post
+                  Publicar
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setReplyingTo(null)}>
-                  Cancel
+                  Cancelar
                 </Button>
               </div>
             )}
@@ -279,13 +280,22 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
 
         const postRef = doc(db, "posts", postId)
         await updateDoc(postRef, { commentsCount: increment(1) })
+        await createNotification(db, {
+          recipientId: postAuthorId,
+          actorId: user.uid,
+          actorName: commentData.authorName,
+          type: "comment",
+          title: "Nuevo comentario",
+          message: `${commentData.authorName} comentó tu reseña.`,
+          href: `/post/${postId}`,
+        })
 
         setNewComment("")
       } catch (error) {
         console.error("Error adding comment:", error)
       }
     },
-    [user, newComment, postId],
+    [user, newComment, postId, postAuthorId],
   )
 
   const handleSubmitReply = useCallback(
@@ -313,12 +323,26 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
         const postRef = doc(db, "posts", postId)
         await updateDoc(postRef, { commentsCount: increment(1) })
 
+        const allComments = comments.flatMap((comment) => [comment, ...(comment.replies || [])])
+        const parentComment = allComments.find((comment) => comment.id === parentId)
+        if (parentComment) {
+          await createNotification(db, {
+            recipientId: parentComment.authorId,
+            actorId: user.uid,
+            actorName: replyData.authorName,
+            type: "answer",
+            title: "Respondieron tu comentario",
+            message: `${replyData.authorName} respondió tu comentario.`,
+            href: `/post/${postId}`,
+          })
+        }
+
         setReplyState({ replyingTo: null, replyText: "" })
       } catch (error) {
         console.error("Error adding reply:", error)
       }
     },
-    [user, replyState.replyText, postId],
+    [comments, user, replyState.replyText, postId],
   )
 
   const handleLikeComment = useCallback(
@@ -461,7 +485,7 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
             isVisible ? "translate-y-0" : "translate-y-full"
           }`}
         >
-          <div className="mb-4 text-center font-semibold">Comments</div>
+          <div className="mb-4 text-center font-semibold">Comentarios</div>
           <div className="flex justify-center py-8">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
@@ -491,7 +515,7 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
           <div className="mx-auto h-1 w-12 rounded-full bg-muted cursor-grab active:cursor-grabbing" />
           <div className="mt-3 flex items-center justify-between">
             <div className="w-8" />
-            <h2 className="font-semibold">Comments</h2>
+            <h2 className="font-semibold">Comentarios</h2>
             <Button variant="ghost" size="sm" onClick={handleCloseButton} className="h-8 w-8 p-0">
               <X className="h-4 w-4" />
             </Button>
@@ -501,7 +525,7 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
         <div className="max-h-[75vh] overflow-y-auto p-4">
           {comments.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              No comments yet. Be the first to comment!
+              Aún no hay comentarios. Sé el primero en participar.
             </div>
           ) : (
             <div className="space-y-6">{renderedComments}</div>
@@ -538,7 +562,7 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
                 type="text"
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                placeholder="What do you think of this?"
+                placeholder="¿Qué opinas de esta reseña?"
                 className="flex-1 rounded-full border border-border bg-surface px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button type="button" className="text-muted-foreground hover:text-foreground">
@@ -547,7 +571,7 @@ export function InstagramComments({ postId, postAuthorId, onClose }: InstagramCo
             </div>
           </form>
         ) : (
-          <div className="border-t border-border p-4 text-center text-sm text-muted-foreground">Sign in to comment</div>
+          <div className="border-t border-border p-4 text-center text-sm text-muted-foreground">Inicia sesión para comentar</div>
         )}
       </div>
     </div>
