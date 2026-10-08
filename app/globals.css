@@ -40,8 +40,8 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-inter);
-  --font-display: var(--font-space-grotesk);
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif;
 
   /* Color System - Dark theme con azul brillante */
   --color-primary: #00d9ff;
